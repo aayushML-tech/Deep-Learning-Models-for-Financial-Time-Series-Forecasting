@@ -79,7 +79,7 @@ Test-set performance (lower error is better; higher R² is better):
 | LSTM-Transformer | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
 | **Transformer (standalone)** | **0.9931** | 0.9944 | **5.97** | **8.76** | **5.22%** | **5.47%** |
 
-*(LSTM row pending — paste its evaluation printout to fill in.)*
+
 
 ### Sample predictions
 
