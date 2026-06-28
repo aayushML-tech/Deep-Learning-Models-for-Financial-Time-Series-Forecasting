@@ -76,10 +76,8 @@ Test-set performance (lower error is better; higher R² is better):
 | Model | R² | Explained Var. | MAE | RMSE | MAPE | SMAPE |
 |-------|-----|----------------|-----|------|------|-------|
 | GRU-Transformer | 0.9887 | 0.9955 | 8.77 | 11.23 | 7.31% | 6.90% |
-| LSTM-Transformer | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
-| **Transformer (standalone)** | **0.9931** | 0.9944 | **5.97** | **8.76** | **5.22%** | **5.47%** |
-
-
+| LSTM-Transformer | 0.9929 | 0.9951 | 6.42 | 8.86 | 5.10% | 5.20% |
+| **Transformer (standalone)** | **0.9931** | 0.9944 | **5.97** | **8.76** | 5.22% | 5.47% |
 
 ### Sample predictions
 
@@ -94,8 +92,8 @@ The very high R² (≈ 0.99) should **not** be read as "the model predicts the m
 
 A few honest observations:
 
-- **The simplest model wins.** The standalone Transformer beats the GRU-Transformer on every error metric (MAE 5.97 vs 8.77, RMSE 8.76 vs 11.23). Adding a recurrent encoder in front of the attention layers did not help here — attention plus positional encoding was enough.
-- **GRU shows a slight bias.** Its Explained Variance (0.9955) sits noticeably above its R² (0.9887); that gap indicates a small systematic offset in its predictions, whereas the Transformer's two numbers are much closer (better-calibrated).
+- **Recurrence buys almost nothing here.** The standalone Transformer and the LSTM-Transformer are effectively tied (RMSE 8.76 vs 8.86; MAPE 5.22% vs 5.10%) — the LSTM is marginally better on percentage error, the Transformer marginally better on absolute error. The standalone Transformer reaches that level with no recurrent layer at all, making it the simplest and cheapest of the three for essentially the same accuracy.
+- **GRU is the clear laggard.** It trails both on every error metric (MAE 8.77 vs ~6, RMSE 11.23 vs ~8.8). Its Explained Variance (0.9955) also sits well above its R² (0.9887) — that gap signals a small *systematic bias* (a consistent offset) in its predictions, whereas the other two models' two numbers are much closer, i.e. better-calibrated.
 - **Predicting levels, not returns.** A naive "tomorrow = today" baseline scores a near-identical R² on price levels. The meaningful question is whether the model beats that baseline and predicts the *direction* of the next move better than chance (~50%) — both are listed under Future Work.
 - **Shuffled split.** Sequences are pooled across stocks and shuffled before the 80/20 split, so test windows are interleaved in time with training windows. This leaks future information and inflates the metrics. A time-ordered (walk-forward) split is the correct evaluation for deployment.
 
@@ -174,5 +172,3 @@ To experiment, edit the `tickers` list, `seq_len`, or the model arguments (`mode
 - **Walk-forward / time-ordered validation** instead of a shuffled split, to remove look-ahead leakage.
 - **Predict returns instead of price levels** to avoid the autocorrelation inflating R².
 - Multi-step (multi-day horizon) forecasting; macro/sentiment features; hyperparameter tuning and an ensemble of the three encoders.
-
-
