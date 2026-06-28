@@ -1,12 +1,12 @@
 # Deep Learning Models for Financial Time-Series Forecasting
 
-Forecasting the **next-day closing price** of stocks using three deep learning architectures and comparing their performance on the same data pipeline:
+Forecasting the **next-day closing price** of stocks using three deep learning architectures and comparing them on an identical data pipeline:
 
 1. **GRU-Transformer** — a GRU encoder feeding a Transformer encoder
 2. **LSTM-Transformer** — an LSTM encoder feeding a Transformer encoder
 3. **Transformer (standalone)** — a pure self-attention model with no recurrent layers
 
-A single model is trained across **multiple stocks at once**. Each stock is given a learnable embedding, so one shared network can specialise its predictions per ticker while still learning patterns common to all of them.
+A single model is trained across **all seven stocks at once**. Each stock gets a learnable embedding, so one shared network specialises per ticker while still learning patterns common to all of them.
 
 > ⚠️ **Disclaimer:** This project is for educational and research purposes only. Nothing here is financial advice, and these predictions should not be used to make trading or investment decisions.
 
@@ -18,11 +18,11 @@ A single model is trained across **multiple stocks at once**. Each stock is give
 - [Models](#models)
 - [Data Pipeline](#data-pipeline)
 - [Evaluation Metrics](#evaluation-metrics)
+- [Results](#results)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
-- [Results](#results)
 - [Future Work](#future-work)
 - [License](#license)
 
@@ -40,22 +40,15 @@ A single model is trained across **multiple stocks at once**. Each stock is give
 
 All three models share the same input projection, positional encoding, and final linear head. They differ only in the encoder stage:
 
-| Model | Architecture | Notebook / Script |
-|-------|--------------|-------------------|
-| **GRU-Transformer** | Input projection → 2-layer GRU (dropout 0.1) → positional encoding → Transformer encoder → linear head | GRU model |
-| **LSTM-Transformer** | Input projection → 2-layer LSTM (dropout 0.1) → positional encoding → Transformer encoder → linear head | LSTM-Transformer model |
-| **Transformer (standalone)** | Input projection → positional encoding → Transformer encoder → linear head (no recurrent layer) | Transformer standalone |
+| Model | Architecture | Notebook |
+|-------|--------------|----------|
+| **GRU-Transformer** | Input projection → 2-layer GRU (dropout 0.1) → positional encoding → Transformer encoder → linear head | `GRU Transformer final.ipynb` |
+| **LSTM-Transformer** | Input projection → 2-layer LSTM (dropout 0.1) → positional encoding → Transformer encoder → linear head | `LSTM Transformer final.ipynb` |
+| **Transformer (standalone)** | Input projection → positional encoding → Transformer encoder → linear head (no recurrent layer) | `Transformer standalone final.ipynb` |
 
-**Shared hyperparameters:**
+**Shared hyperparameters:** model dimension `128`, recurrent hidden size `128` (GRU/LSTM models), `8` attention heads, `3` Transformer encoder layers, stock embedding dimension `32`, GELU activation.
 
-- Model dimension: `128`
-- Recurrent hidden size (GRU/LSTM models): `128`
-- Attention heads: `8`
-- Transformer encoder layers: `3`
-- Stock embedding dimension: `32`
-- Activation: GELU
-
-> Note: each model uses an `input_proj` linear layer that concatenates the input features with the stock embedding before encoding. The standalone Transformer applies positional encoding directly to the projected input, while the hybrid models apply it to the recurrent layer's output.
+> Each model uses an `input_proj` linear layer that concatenates the input features with the stock embedding before encoding. The standalone Transformer applies positional encoding directly to the projected input; the hybrid models apply it to the recurrent layer's output.
 
 ## Data Pipeline
 
@@ -69,49 +62,66 @@ The same preprocessing is used across all three models:
 - **Base features:** Open, High, Low, Close, Volume
 - **Engineered features:** `sma_10`, `ema_10`, `rsi` (14), `macd`, `bb_bbm` (Bollinger middle band), `day_of_week`
 - **Outlier removal:** rows where the rolling 252-day Z-score of daily returns exceeds 3 (absolute) are dropped
-- **Scaling:** `MinMaxScaler` (a separate close-price scaler is kept per stock for inverse-transforming predictions back to price)
-- **Split:** sequences from all stocks are pooled, shuffled, and split 80% train / 20% test
+- **Scaling:** `MinMaxScaler` (a separate close-price scaler per stock is kept for inverse-transforming predictions back to price)
+- **Split:** sequences from all stocks are pooled, shuffled, and split 80% train / 20% test (≈15,390 train / 3,848 test sequences)
 
 ## Evaluation Metrics
 
-After training, each model is evaluated on the held-out test set (predictions are inverse-scaled to real prices first). The following are reported:
+Each model is evaluated on the held-out test set, with predictions inverse-scaled back to USD prices before scoring: R² (coefficient of determination), Explained Variance, MAE, RMSE, MAPE, and SMAPE.
 
-- R² (coefficient of determination)
-- Explained Variance
-- MAE (Mean Absolute Error)
-- RMSE (Root Mean Squared Error)
-- MAPE (Mean Absolute Percentage Error)
-- SMAPE (Symmetric MAPE)
+## Results
+
+Test-set performance (lower error is better; higher R² is better):
+
+| Model | R² | Explained Var. | MAE | RMSE | MAPE | SMAPE |
+|-------|-----|----------------|-----|------|------|-------|
+| GRU-Transformer | 0.9887 | 0.9955 | 8.77 | 11.23 | 7.31% | 6.90% |
+| LSTM-Transformer | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ | _TODO_ |
+| **Transformer (standalone)** | **0.9931** | 0.9944 | **5.97** | **8.76** | **5.22%** | **5.47%** |
+
+*(LSTM row pending — paste its evaluation printout to fill in.)*
+
+### Sample predictions
+
+Three years of actual vs. predicted closing prices, with the predicted next-day close marked in green:
+
+![Transformer — TSLA](results/transformer_TSLA.png)
+![GRU — JPM](results/gru_JPM.png)
+
+### Interpreting these numbers
+
+The very high R² (≈ 0.99) should **not** be read as "the model predicts the market." It mainly reflects how easy it is to predict price *levels*: consecutive daily closes are nearly identical, so any model that roughly tracks the previous day's price already scores extremely well on R² and MAPE. In the plots, the predicted line slightly **lags** the actual line — the signature of a model leaning on day-to-day persistence rather than anticipating moves.
+
+A few honest observations:
+
+- **The simplest model wins.** The standalone Transformer beats the GRU-Transformer on every error metric (MAE 5.97 vs 8.77, RMSE 8.76 vs 11.23). Adding a recurrent encoder in front of the attention layers did not help here — attention plus positional encoding was enough.
+- **GRU shows a slight bias.** Its Explained Variance (0.9955) sits noticeably above its R² (0.9887); that gap indicates a small systematic offset in its predictions, whereas the Transformer's two numbers are much closer (better-calibrated).
+- **Predicting levels, not returns.** A naive "tomorrow = today" baseline scores a near-identical R² on price levels. The meaningful question is whether the model beats that baseline and predicts the *direction* of the next move better than chance (~50%) — both are listed under Future Work.
+- **Shuffled split.** Sequences are pooled across stocks and shuffled before the 80/20 split, so test windows are interleaved in time with training windows. This leaks future information and inflates the metrics. A time-ordered (walk-forward) split is the correct evaluation for deployment.
+
+These caveats are surfaced deliberately: on financial time series, an honest account of *why* a metric looks good matters more than the metric itself.
 
 ## Project Structure
 
 ```
 Deep-Learning-Models-for-Financial-Time-Series-Forecasting/
-├── GRU.ipynb                          # GRU-Transformer model
-├── LSTM_Transformer.ipynb             # LSTM-Transformer model
+├── GRU Transformer final.ipynb        # GRU-Transformer model
+├── LSTM Transformer final.ipynb       # LSTM-Transformer model
 ├── Transformer standalone final.ipynb # Standalone Transformer model
+├── results/                           # Saved prediction plots (.png)
 ├── requirements.txt
 └── README.md
 ```
 
-> Rename the entries above to match your actual notebook filenames if they differ.
-
 ## Installation
-
-Clone the repository:
 
 ```bash
 git clone https://github.com/aayushML-tech/Deep-Learning-Models-for-Financial-Time-Series-Forecasting.git
 cd Deep-Learning-Models-for-Financial-Time-Series-Forecasting
-```
-
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-A suitable `requirements.txt` for this project:
+`requirements.txt`:
 
 ```
 yfinance
@@ -125,30 +135,23 @@ ta
 
 ## Usage
 
-Each model lives in its own notebook. Launch Jupyter:
+Launch Jupyter and run any notebook's cells in order:
 
 ```bash
 jupyter notebook
 ```
 
-Open any of the three notebooks and run all cells in order. Each notebook will:
+Each notebook will download and preprocess data for all seven tickers, train for 30 epochs, print test-set metrics, and generate a next-day prediction plus a 3-year comparison plot for every stock.
 
-1. Download and preprocess data for all seven tickers
-2. Train the model for 30 epochs
-3. Print test-set evaluation metrics
-4. Generate a next-day close prediction and a 3-year comparison plot for **every** trained stock
-
-To predict a single stock instead of all of them, call the prediction helper directly (it's defined inside each notebook):
+To predict a single stock, call the helper defined in each notebook:
 
 ```python
 predict_next_day("AAPL")
 ```
 
-Only the seven tickers the model was trained on are supported; passing any other symbol returns an error message.
+Only the seven trained tickers are supported; any other symbol returns an error message.
 
 ## Configuration
-
-Common settings near the top of each script:
 
 | Setting | Value | Where |
 |---------|-------|-------|
@@ -162,28 +165,14 @@ Common settings near the top of each script:
 | Loss | MSE | `criterion` |
 | Gradient clipping | max-norm 1.0 | training loop |
 
-To experiment, change the `tickers` list, adjust `seq_len`, or edit the model-construction arguments (`model_dim`, `n_heads`, `num_layers`, `embedding_dim`).
-
-## Results
-
-Fill in the metrics printed by each notebook's evaluation block to compare the models:
-
-| Model | R² | Explained Var. | MAE | RMSE | MAPE | SMAPE |
-|-------|-----|----------------|-----|------|------|-------|
-| GRU-Transformer | — | — | — | — | — | — |
-| LSTM-Transformer | — | — | — | — | — | — |
-| Transformer (standalone) | — | — | — | — | — | — |
-
-You can also embed a prediction plot, e.g.:
-
-```
-![AAPL prediction](results/aapl_prediction.png)
-```
+To experiment, edit the `tickers` list, `seq_len`, or the model arguments (`model_dim`, `n_heads`, `num_layers`, `embedding_dim`).
 
 ## Future Work
 
-- Multi-step (multi-day horizon) forecasting rather than single next-day prediction
-- Add macro/sentiment features alongside the technical indicators
-- Hyperparameter tuning and an ensemble of the three encoders
-- Walk-forward / time-based validation instead of a shuffled split, to better reflect real deployment
+- **Add a naive baseline** ("tomorrow = today") and report it alongside the models, so the metrics have a reference point.
+- **Report directional accuracy** (% of correct up/down calls) — the metric that actually matters for trading.
+- **Walk-forward / time-ordered validation** instead of a shuffled split, to remove look-ahead leakage.
+- **Predict returns instead of price levels** to avoid the autocorrelation inflating R².
+- Multi-step (multi-day horizon) forecasting; macro/sentiment features; hyperparameter tuning and an ensemble of the three encoders.
+
 
